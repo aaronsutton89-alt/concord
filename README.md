@@ -5,8 +5,15 @@
 
 Concord is a feature-rich TUI client for Discord, written in Rust with ratatui.
 
+This fork adds optional Linux NVENC and Vulkan Video screen-share encoding,
+plus an active encoder indicator in the TUI. Start with the
+[CachyOS installation](#cachyos-nvencauto-installation) below to install these
+changes from `feat/linux-hardware-encoding`.
+
 ## Table of contents
 
+- [Changes in this fork](#changes-in-this-fork)
+- [CachyOS installation](#cachyos-nvencauto-installation)
 - [Installation](#installation)
 - [Features](#features)
 - [Configuration](#configuration)
@@ -16,9 +23,161 @@ Concord is a feature-rich TUI client for Discord, written in Rust with ratatui.
 - [Contributing](#contributing)
 - [License](#license)
 
+## Changes in this fork
+
+Based on [upstream Concord](https://github.com/chojs23/concord) 2.6.1, this
+branch adds:
+
+- **NVIDIA NVENC H.264 encoding** through system FFmpeg, enabled with the
+  optional `ffmpeg-encoding` Cargo feature.
+- **Experimental Vulkan Video H.264 encoding**, with an isolated FFmpeg 9.0.2
+  compatibility patch and launcher for the tested Baseline-profile issue.
+- **Encoder preferences** under `[screen_capture]`: `auto`, `nvenc`, `vaapi`,
+  `vulkan`, or `software`, plus optional device selection.
+- **Automatic selection:** NVENC → VA-API → Vulkan → OpenH264 software.
+  An explicit hardware selection also falls back to software if unavailable.
+  Runtime hardware failure switches to software for the remainder of the share.
+- **Live TUI status:** the voice header shows the actual encoder, such as
+  `🔴 [NVENC]`, `🔴 [Vulkan]`, or `🔴 [Software]`, and updates after fallback.
+- **Hardware encode/decode tests and debug diagnostics**, covering keyframes,
+  interval changes, backend selection and stream performance.
+
+Screen sharing retains the existing 1280×720, 30 FPS and 6 Mbps encoding target.
+A game's rendering API does not choose the screen-share encoder: a game running
+in Vulkan can still be encoded through NVENC. VA-API precedes Vulkan because it
+is the established Linux backend; Vulkan currently requires additional
+compatibility testing and, on the tested installation, the FFmpeg workaround.
+
+NVENC desktop sharing and Vulkan sharing of Deadlock were verified on an RTX
+5090, with the viewer confirming correct picture and audio. Vulkan used the
+patched runtime; these results do not establish support on every GPU or driver.
+See the [hardware encoding guide](./docs/hardware-encoding.md) for test results,
+limitations and the experimental Vulkan instructions, and the
+[implementation plan](./docs/hardware-encoding-plan.md) for remaining work.
+
+## CachyOS NVENC/auto installation
+
+These steps build **this fork's feature branch**. The upstream Cargo, npm,
+Homebrew and release installers listed later do not install this branch's
+additions. Run the following commands in a terminal.
+
+### 1. Install build dependencies
+
+CachyOS uses pacman. Update the system and install the native build dependencies:
+
+```sh
+sudo pacman -Syu --needed git base-devel clang cmake nasm pkgconf \
+  alsa-lib libva mesa pipewire libpipewire ffmpeg xdg-desktop-portal
+```
+
+Use Rust **1.90 or newer**. If Rust is already installed, check it with
+`rustc --version` and `cargo --version`. For a new Rust setup:
+
+```sh
+sudo pacman -S --needed rustup
+rustup default stable
+```
+
+If you already use a working Rust installation, keep that toolchain rather
+than installing a second provider. NVENC also requires a supported NVIDIA GPU
+and a working NVIDIA driver installed through CachyOS's normal driver setup.
+The FFmpeg libraries are needed at runtime as well as during compilation.
+
+Screen capture needs a working PipeWire session and the desktop portal backend
+for your desktop environment. See the
+[CachyOS documentation](https://wiki.cachyos.org/) and
+[Arch desktop portal guide](https://wiki.archlinux.org/title/XDG_Desktop_Portal)
+for your desktop's setup. Package references:
+[FFmpeg](https://archlinux.org/packages/extra/x86_64/ffmpeg/) and
+[PipeWire client library](https://archlinux.org/packages/extra/x86_64/libpipewire/).
+
+### 2. Clone and install this branch
+
+```sh
+git clone --branch feat/linux-hardware-encoding --single-branch \
+  https://github.com/aaronsutton89-alt/concord.git concord-hardware
+cd concord-hardware
+```
+
+If replacing an existing installation, close Concord and optionally save its
+current executable first (this example uses a Bash-compatible shell):
+
+```sh
+if command -v concord >/dev/null 2>&1; then
+  mkdir -p "$HOME/.local/share/concord/backups"
+  cp -- "$(command -v concord)" \
+    "$HOME/.local/share/concord/backups/concord-before-hardware-$(date +%Y%m%d-%H%M%S)"
+fi
+```
+
+Install the feature-enabled build without sudo:
+
+```sh
+cargo install --path . --locked --features ffmpeg-encoding --force
+export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
+concord --version
+```
+
+Cargo installs to `$CARGO_HOME/bin`, normally `~/.cargo/bin`. Ensure that
+directory is in your `PATH` (the shell's executable search path), and use
+`command -v concord` to check which copy will launch. The `export` above applies
+to the current terminal; add that Cargo bin directory to your shell’s startup
+configuration if it is not already there. Installation preserves
+Concord's existing configuration and account data. This branch still reports
+version 2.6.1; the version number alone does not identify its optional features.
+
+### 3. Select auto and start sharing
+
+Run `concord` once to initialize its configuration if this is a fresh install,
+then edit `~/.config/concord/config.toml` (or
+`$XDG_CONFIG_HOME/concord/config.toml` if you use a custom config directory).
+Add this section, or update it if it already exists:
+
+```toml
+[screen_capture]
+encoder = "auto"
+```
+
+Leave `device` unset unless you need a particular GPU. On a working NVIDIA
+setup, `auto` selects NVENC first. Stop and restart an existing share after
+changing the setting. Join a voice channel, open its channel actions and choose
+**Share screen**. The voice header should show **[NVENC]**; **[Software]** means
+hardware selection or encoding fell back to OpenH264.
+
+Launch normally with `concord`. To enable debug logs:
+
+```sh
+CONCORD_DEBUG=1 concord
+```
+
+In a second terminal, follow the log:
+
+```sh
+tail -f ~/.config/concord/concord.log
+```
+
+Look for `stream H264 encoder selected: backend=nvenc`. Logs follow the custom
+`XDG_CONFIG_HOME` when set; `CONCORD_LOG_FILE` can override their location.
+Press Ctrl+C to stop following the log. The NVENC/auto installation uses system
+FFmpeg and does not need the experimental Vulkan launcher.
+
+### Updating this installation
+
+From your `concord-hardware` checkout, with Concord closed:
+
+```sh
+git pull --ff-only
+cargo install --path . --locked --features ffmpeg-encoding --force
+```
+
+Restart Concord after installation. If a system FFmpeg update changes its
+shared-library ABI and Concord no longer starts, rebuild using the same command.
+
 ## Installation
 
-Release builds include voice playback and stream broadcasting.
+The following are upstream installation methods. Upstream release builds include
+voice playback and stream broadcasting; use the CachyOS instructions above for
+this fork’s optional FFmpeg encoders and TUI additions.
 
 ### **Cargo**
 
@@ -94,7 +253,7 @@ sudo pacman -S alsa-lib libva mesa pipewire xdg-desktop-portal
 ```
 
 Screen sharing requires the portal backend for your desktop environment.
-Concord uses native H.264 hardware encoding when available: VA API on Linux,
+Default builds use native H.264 hardware encoding when available: VA API on Linux,
 VideoToolbox on macOS, and Media Foundation on Windows. If hardware encoding is unavailable, Concord falls back to software encoding.
 
 ### Build from source
