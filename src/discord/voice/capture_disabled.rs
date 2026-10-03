@@ -28,6 +28,10 @@ pub(super) struct PreparedStreamCapture {
 }
 
 impl StreamCaptureHandle {
+    pub(super) fn encoder_name(&self) -> &'static str {
+        "unknown"
+    }
+
     pub(super) fn request_keyframe(&self) {
         // Disabled builds never construct a capture handle.
     }

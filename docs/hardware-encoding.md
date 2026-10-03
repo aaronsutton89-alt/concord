@@ -49,6 +49,11 @@ fallback reason is visible in debug logs; launch with `CONCORD_DEBUG=1` to
 inspect them. Invalid values follow Concord's configuration convention: a
 warning is logged and the setting defaults to `"auto"`.
 
+The TUI voice header displays the active encoder during a share, for example
+`🔴 [NVENC]`, `🔴 [Vulkan]`, or `🔴 [Software]`. This is the selected runtime
+backend, not the configured preference; it updates if hardware falls back to
+software and clears when the share ends.
+
 Encoder settings are read when screen sharing starts. Saving configuration
 through the TUI does not change an already-running share; stop and start the
 share to apply new settings. If an encoder fails during a share and Concord

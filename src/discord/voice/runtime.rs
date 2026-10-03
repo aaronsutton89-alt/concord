@@ -686,6 +686,7 @@ impl VoiceRuntimeState {
             | VoiceRuntimeEvent::BroadcastStreamCaptureFailed { .. }
             | VoiceRuntimeEvent::BroadcastStreamStopRequested { .. }
             | VoiceRuntimeEvent::BroadcastStreamConnectionEstablished { .. }
+            | VoiceRuntimeEvent::BroadcastStreamEncoderChanged { .. }
             | VoiceRuntimeEvent::BroadcastStreamConnectionStable { .. }
             | VoiceRuntimeEvent::BroadcastStreamConnectionEnded { .. } => {}
             VoiceRuntimeEvent::ConnectionEstablished { connection_id } => {
@@ -981,6 +982,21 @@ pub(crate) async fn run_voice_runtime(
             }
             _ => None,
         };
+        let broadcast_encoder = match (&event, broadcast_controller.active_session()) {
+            (
+                VoiceRuntimeEvent::BroadcastStreamEncoderChanged {
+                    connection_id,
+                    stream_key,
+                    encoder,
+                },
+                Some(session),
+            ) if session.connection_id == *connection_id
+                && session.request.stream_key == *stream_key =>
+            {
+                Some((session.request.scope, session.request.channel_id, *encoder))
+            }
+            _ => None,
+        };
         let broadcast_started = broadcast_controller.connection_started(&event);
         let stream_update = stream_state.apply(&event);
         let broadcast_update = broadcast_state.apply(&event);
@@ -1063,6 +1079,11 @@ pub(crate) async fn run_voice_runtime(
         if broadcast_started && let Some(session) = broadcast_controller.active_session() {
             status_publisher
                 .publish_stream_broadcast_started(session.request.scope, session.request.channel_id)
+                .await;
+        }
+        if let Some((scope, channel_id, encoder)) = broadcast_encoder {
+            status_publisher
+                .publish_stream_broadcast_encoder_changed(scope, channel_id, encoder)
                 .await;
         }
         let connected_this_event = matches!(&action, Some(VoiceRuntimeAction::Connect(_)));

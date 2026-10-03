@@ -1,5 +1,6 @@
 use super::*;
 use crate::discord::VoiceScope;
+use crate::discord::marker::ChannelMarker;
 use crate::discord::test_builders::{
     GuildCreateFixture, VoiceConnectionStatusChangedFixture, VoiceSpeakingUpdateFixture,
     guild_create_event, voice_connection_status_changed_event, voice_speaking_update_event,
@@ -227,6 +228,123 @@ fn header_labels_active_voice_broadcast() {
     let header = dump.first().expect("dashboard render includes header");
 
     assert!(header.contains("Voice guild - Lobby 🔴"), "{header}");
+}
+
+#[test]
+fn header_updates_broadcast_encoder_after_software_fallback() {
+    let (mut state, scope, channel_id) = active_broadcast_header_state();
+    state.push_event(AppEvent::StreamBroadcastEncoderChanged {
+        scope,
+        channel_id,
+        encoder: "nvenc",
+    });
+    let header = render_dashboard_dump(120, 10, &mut state)
+        .first()
+        .expect("dashboard render includes header")
+        .clone();
+    assert!(
+        header.contains("[NVENC]") && header.contains("🔴"),
+        "{header}"
+    );
+
+    state.push_event(AppEvent::StreamBroadcastEncoderChanged {
+        scope,
+        channel_id,
+        encoder: "openh264",
+    });
+    let header = render_dashboard_dump(120, 10, &mut state)
+        .first()
+        .expect("dashboard render includes header")
+        .clone();
+    assert!(
+        header.contains("[Software]") && header.contains("🔴"),
+        "{header}"
+    );
+    assert!(!header.contains("[NVENC]"), "{header}");
+}
+
+#[test]
+fn header_ignores_encoder_change_for_another_broadcast_channel() {
+    let (mut state, scope, channel_id) = active_broadcast_header_state();
+    state.push_event(AppEvent::StreamBroadcastEncoderChanged {
+        scope,
+        channel_id,
+        encoder: "nvenc",
+    });
+    state.push_event(AppEvent::StreamBroadcastEncoderChanged {
+        scope,
+        channel_id: Id::new(12),
+        encoder: "openh264",
+    });
+
+    let header = render_dashboard_dump(120, 10, &mut state)
+        .first()
+        .expect("dashboard render includes header")
+        .clone();
+    assert!(
+        header.contains("[NVENC]") && header.contains("🔴"),
+        "{header}"
+    );
+    assert!(!header.contains("[Software]"), "{header}");
+}
+
+#[test]
+fn header_labels_vulkan_and_clears_encoder_when_broadcast_restarts() {
+    let (mut state, scope, channel_id) = active_broadcast_header_state();
+    state.push_event(AppEvent::StreamBroadcastEncoderChanged {
+        scope,
+        channel_id,
+        encoder: "vulkan",
+    });
+    let header = render_dashboard_dump(120, 10, &mut state)
+        .first()
+        .expect("dashboard render includes header")
+        .clone();
+    assert!(
+        header.contains("[Vulkan]") && header.contains("🔴"),
+        "{header}"
+    );
+
+    state.push_event(AppEvent::StreamBroadcastEnded { scope, channel_id });
+    assert!(state.show_stream_broadcast_preparing_toast(scope, channel_id));
+    state.push_event(AppEvent::StreamBroadcastStarted { scope, channel_id });
+    let header = render_dashboard_dump(120, 10, &mut state)
+        .first()
+        .expect("dashboard render includes header")
+        .clone();
+    assert!(header.contains("Voice guild - Lobby 🔴"), "{header}");
+    assert!(!header.contains("[Vulkan]"), "{header}");
+}
+
+fn active_broadcast_header_state() -> (DashboardState, VoiceScope, Id<ChannelMarker>) {
+    let guild_id = Id::new(1);
+    let channel_id = Id::new(11);
+    let scope = VoiceScope::Guild(guild_id);
+    let mut state = DashboardState::new();
+    state.push_event(AppEvent::Ready {
+        user: "muri".to_owned(),
+        user_id: Some(Id::new(10)),
+    });
+    state.push_event(guild_create_event(GuildCreateFixture {
+        channels: vec![ChannelInfo {
+            guild_id: Some(guild_id),
+            position: Some(0),
+            name: "Lobby".to_owned(),
+            ..ChannelInfo::test(channel_id, "GuildVoice")
+        }],
+        ..GuildCreateFixture::new(guild_id)
+    }));
+    state.push_effect(voice_connection_status_changed_event(
+        VoiceConnectionStatusChangedFixture {
+            scope,
+            channel_id: Some(channel_id),
+            status: VoiceConnectionStatus::Connected,
+            ..VoiceConnectionStatusChangedFixture::new()
+        },
+    ));
+    state.show_stream_broadcast_preparing_toast(scope, channel_id);
+    state.push_event(AppEvent::StreamBroadcastStarted { scope, channel_id });
+    (state, scope, channel_id)
 }
 
 #[test]

@@ -16,7 +16,7 @@ use fast_image_resize::{
     images::{CroppedImageMut, Image, ImageRef},
 };
 use image::RgbaImage;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use yuv::{
     YuvChromaSubsampling, YuvConversionMode, YuvPlanarImageMut, YuvRange, YuvStandardMatrix,
     rgba_to_yuv420,
@@ -87,6 +87,7 @@ struct StreamCaptureControl {
     stop: Arc<AtomicBool>,
     force_keyframe: Arc<AtomicBool>,
     keyframe_interval_frames: Arc<AtomicU32>,
+    encoder_name: watch::Sender<&'static str>,
 }
 
 pub(super) use super::capture_cancellation::StreamCaptureCancellation;
@@ -659,6 +660,10 @@ fn reap_capture_worker(worker: JoinHandle<()>) {
 }
 
 impl StreamCaptureHandle {
+    pub(super) fn encoder_name(&self) -> &'static str {
+        *self.control.encoder_name.borrow()
+    }
+
     pub(super) fn request_keyframe(&self) {
         self.control.force_keyframe.store(true, Ordering::Release);
     }
@@ -724,6 +729,7 @@ pub(super) fn prepare_stream_capture(
     let (errors_tx, errors) = mpsc::unbounded_channel();
     let (ready_tx, ready_rx) = sync_channel(1);
     let control = StreamCaptureControl {
+        encoder_name: watch::channel("unknown").0,
         stop: cancellation.flag(),
         force_keyframe: Arc::new(AtomicBool::new(false)),
         keyframe_interval_frames: Arc::new(AtomicU32::new(STREAM_INTRA_FRAME_PERIOD_FRAMES)),
@@ -878,6 +884,7 @@ fn run_capture_loop(
     let mut encoder = StreamEncoder::new_linux(active_keyframe_interval_frames, &options)?;
     #[cfg(not(target_os = "linux"))]
     let mut encoder = StreamEncoder::new_auto(active_keyframe_interval_frames)?;
+    control.encoder_name.send_replace(encoder.name());
     if ready_tx.send(Ok(())).is_err() {
         logging::debug(
             "stream",
@@ -953,6 +960,13 @@ fn run_capture_loop(
         let force_keyframe = interval_changed || keyframe_requested;
         let encoded = encoder.encode(frame_processor.i420_source(), force_keyframe)?;
         let encode_time = encode_started_at.elapsed();
+        control.encoder_name.send_if_modified(|name| {
+            if *name == encoder.name() {
+                return false;
+            }
+            *name = encoder.name();
+            true
+        });
         let (outcome, encoded_bytes) = match encoded {
             Some(encoded) => {
                 let encoded_bytes = encoded.annex_b.len();
@@ -1051,6 +1065,7 @@ mod tests {
     fn capture_handle_coalesces_keyframe_requests() {
         let mut handle = StreamCaptureHandle {
             control: StreamCaptureControl {
+                encoder_name: watch::channel("unknown").0,
                 stop: Arc::new(AtomicBool::new(false)),
                 force_keyframe: Arc::new(AtomicBool::new(false)),
                 keyframe_interval_frames: Arc::new(AtomicU32::new(
@@ -1087,6 +1102,7 @@ mod tests {
 
         let handle = StreamCaptureHandle {
             control: StreamCaptureControl {
+                encoder_name: watch::channel("unknown").0,
                 stop: Arc::new(AtomicBool::new(false)),
                 force_keyframe: Arc::new(AtomicBool::new(false)),
                 keyframe_interval_frames: Arc::new(AtomicU32::new(
@@ -1115,6 +1131,7 @@ mod tests {
         });
         let handle = StreamCaptureHandle {
             control: StreamCaptureControl {
+                encoder_name: watch::channel("unknown").0,
                 stop: Arc::new(AtomicBool::new(false)),
                 force_keyframe: Arc::new(AtomicBool::new(false)),
                 keyframe_interval_frames: Arc::new(AtomicU32::new(

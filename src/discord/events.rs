@@ -697,6 +697,11 @@ pub enum AppEvent {
         scope: VoiceScope,
         channel_id: Id<ChannelMarker>,
     },
+    StreamBroadcastEncoderChanged {
+        scope: VoiceScope,
+        channel_id: Id<ChannelMarker>,
+        encoder: &'static str,
+    },
     StreamBroadcastAudioUnavailable {
         message: String,
     },
@@ -963,6 +968,7 @@ define_app_event_kinds! {
     StreamPlaybackEnded: AppEvent::StreamPlaybackEnded { .. },
     StreamCaptureTargetsLoaded: AppEvent::StreamCaptureTargetsLoaded { .. },
     StreamBroadcastStarted: AppEvent::StreamBroadcastStarted { .. },
+    StreamBroadcastEncoderChanged: AppEvent::StreamBroadcastEncoderChanged { .. },
     StreamBroadcastAudioUnavailable: AppEvent::StreamBroadcastAudioUnavailable { .. },
     StreamBroadcastStartFailed: AppEvent::StreamBroadcastStartFailed { .. },
     StreamBroadcastEnded: AppEvent::StreamBroadcastEnded { .. },
@@ -1965,6 +1971,7 @@ impl AppEventKind {
             | AppEventKind::VoiceAudioSourcesLoaded
             | AppEventKind::VoiceAudioSourcesApplyFailed
             | AppEventKind::StreamBroadcastStarted
+            | AppEventKind::StreamBroadcastEncoderChanged
             | AppEventKind::StreamBroadcastAudioUnavailable
             | AppEventKind::StreamBroadcastStartFailed
             | AppEventKind::StreamBroadcastEnded

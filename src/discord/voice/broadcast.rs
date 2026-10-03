@@ -413,7 +413,8 @@ impl StreamBroadcastRuntimeState {
                 }
                 self.clear_matching(&stream.stream_key, &mut update, false);
             }
-            VoiceRuntimeEvent::BroadcastStreamConnectionEstablished { .. } => {}
+            VoiceRuntimeEvent::BroadcastStreamConnectionEstablished { .. }
+            | VoiceRuntimeEvent::BroadcastStreamEncoderChanged { .. } => {}
             VoiceRuntimeEvent::BroadcastStreamConnectionStable {
                 connection_id,
                 stream_key,
@@ -1886,6 +1887,12 @@ async fn run_stream_broadcast_media(
         connection_id,
         stream_key: stream_key.clone(),
     });
+    let mut reported_encoder = prepared_capture.capture.handle.encoder_name();
+    let _ = events_tx.send(VoiceRuntimeEvent::BroadcastStreamEncoderChanged {
+        connection_id,
+        stream_key: stream_key.clone(),
+        encoder: reported_encoder,
+    });
     let mut stable_deadline: Option<TokioInstant> = None;
     let mut stable = false;
     let mut keyframe_interval_updates_open = true;
@@ -1925,6 +1932,13 @@ async fn run_stream_broadcast_media(
                         );
                     };
                     let frame = frame.map_err(BroadcastConnectionFailure::stop)?;
+                    let encoder = prepared_capture.capture.handle.encoder_name();
+                    if encoder != reported_encoder {
+                        reported_encoder = encoder;
+                        let _ = events_tx.send(VoiceRuntimeEvent::BroadcastStreamEncoderChanged {
+                            connection_id, stream_key: stream_key.clone(), encoder,
+                        });
+                    }
                     if !stable && stable_deadline.is_none() {
                         stable_deadline =
                             Some(TokioInstant::now() + STREAM_BROADCAST_CONNECTION_STABLE_INTERVAL);

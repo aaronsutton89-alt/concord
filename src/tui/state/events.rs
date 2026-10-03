@@ -281,6 +281,20 @@ impl DashboardState {
             AppEvent::StreamBroadcastStarted { scope, channel_id } => {
                 self.clear_stream_broadcast_preparing(*scope, *channel_id);
             }
+            AppEvent::StreamBroadcastEncoderChanged {
+                scope,
+                channel_id,
+                encoder,
+            } => {
+                if self
+                    .runtime
+                    .active_stream_broadcast
+                    .as_ref()
+                    .is_some_and(|target| target.matches(*scope, *channel_id))
+                {
+                    self.runtime.stream_broadcast_encoder = Some(*encoder);
+                }
+            }
             AppEvent::StreamBroadcastAudioUnavailable { message } => {
                 self.show_error_toast(message, Instant::now());
             }
@@ -625,6 +639,7 @@ impl DashboardState {
         self.runtime.active_stream_playbacks.clear();
         self.runtime.stream_broadcast_preparing = None;
         self.runtime.active_stream_broadcast = None;
+        self.runtime.stream_broadcast_encoder = None;
         if self
             .runtime
             .voice_connection

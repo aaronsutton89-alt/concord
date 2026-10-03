@@ -259,6 +259,10 @@ impl StreamEncoder {
         Ok(())
     }
 
+    pub(super) fn name(&self) -> &'static str {
+        self.backend.name()
+    }
+
     pub(super) fn encode(
         &mut self,
         frame: I420Frame<'_>,
