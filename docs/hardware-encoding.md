@@ -79,7 +79,7 @@ frames, including forced and periodic IDRs and an interval change; the run took
 The isolated runtime diagnostic uses the patched `libavcodec.so.63` with the
 system `libavutil`, without installing or replacing system libraries. Its
 minimal FFmpeg runtime supports only `h264_vulkan`; this does not validate the
-normal automatic or NVENC runtime. A live screen share of the game Deadlock is still pending. Keep Vulkan experimental until that check passes.
+normal automatic or NVENC runtime. A live screen share of Deadlock selected `backend=vulkan`. Over the first 65 seconds, steady-state transmission was 29.9–30.2 FPS with 0.8–0.9 ms interval-average encoding time, zero capture queue drops or encoder skips after the first interval, and zero screen-share audio capture drops. The first interval had 32 startup queue drops. The user confirmed correct viewer picture and audio. Longer-duration and repeated stop/start validation remain open; Vulkan remains experimental and requires this workaround on the tested installation.
 For a user test, explicitly select `encoder = "vulkan"` under `[screen_capture]`
 and restart the share; do not use automatic selection to validate Vulkan.
 
