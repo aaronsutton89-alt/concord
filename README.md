@@ -8,7 +8,7 @@ Concord is a feature-rich TUI client for Discord, written in Rust with ratatui.
 This fork adds optional Linux NVENC and Vulkan Video screen-share encoding,
 plus an active encoder indicator in the TUI. Start with the
 [CachyOS installation](#cachyos-nvencauto-installation) below to install these
-changes from `feat/linux-hardware-encoding`.
+changes from this fork’s `main` branch.
 
 ## Table of contents
 
@@ -57,7 +57,7 @@ limitations and the experimental Vulkan instructions, and the
 
 ## CachyOS NVENC/auto installation
 
-These steps build **this fork's feature branch**. The upstream Cargo, npm,
+These steps build **this fork's `main` branch**. The upstream Cargo, npm,
 Homebrew and release installers listed later do not install this branch's
 additions. Run the following commands in a terminal.
 
@@ -94,7 +94,7 @@ for your desktop's setup. Package references:
 ### 2. Clone and install this branch
 
 ```sh
-git clone --branch feat/linux-hardware-encoding --single-branch \
+git clone --branch main --single-branch \
   https://github.com/aaronsutton89-alt/concord.git concord-hardware
 cd concord-hardware
 ```
