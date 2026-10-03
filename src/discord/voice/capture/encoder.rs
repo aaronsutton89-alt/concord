@@ -71,7 +71,13 @@ pub(super) struct StreamEncoder {
     keyframe_interval_frames: u32,
 }
 
+#[cfg(all(target_os = "linux", feature = "ffmpeg-encoding"))]
+#[path = "encoder/ffmpeg.rs"]
+mod ffmpeg;
+
 enum StreamEncoderBackend {
+    #[cfg(all(target_os = "linux", feature = "ffmpeg-encoding"))]
+    Ffmpeg(Box<ffmpeg::FfmpegEncoder>, ffmpeg::Kind),
     OpenH264(Box<OpenH264Encoder>),
     #[cfg(target_os = "linux")]
     VaApi(Box<vaapi::VaApiEncoder>),
@@ -82,15 +88,8 @@ enum StreamEncoderBackend {
 }
 
 impl StreamEncoder {
+    #[cfg(not(target_os = "linux"))]
     pub(super) fn new_auto(keyframe_interval_frames: u32) -> Result<Self, String> {
-        #[cfg(target_os = "linux")]
-        return Self::new_with_hardware(
-            "VA API",
-            vaapi::VaApiEncoder::new(keyframe_interval_frames)
-                .map(|encoder| StreamEncoderBackend::VaApi(Box::new(encoder))),
-            keyframe_interval_frames,
-        );
-
         #[cfg(target_os = "macos")]
         return Self::new_with_hardware(
             "VideoToolbox",
@@ -123,6 +122,7 @@ impl StreamEncoder {
         });
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn new_with_hardware(
         hardware_name: &'static str,
         hardware: Result<StreamEncoderBackend, String>,
@@ -152,6 +152,111 @@ impl StreamEncoder {
             backend: selection.encoder,
             keyframe_interval_frames,
         })
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(super) fn new_linux(
+        interval: u32,
+        options: &crate::config::ScreenCaptureOptions,
+    ) -> Result<Self, String> {
+        use crate::config::ScreenCaptureEncoderPreference as Preference;
+        let candidates = linux_candidates(options.encoder);
+        let mut failures = Vec::new();
+        for &candidate in candidates {
+            let result = match candidate {
+                Preference::Vaapi => {
+                    if options.device.is_some() {
+                        Err("explicit device selection is unsupported for VA-API".into())
+                    } else {
+                        vaapi::VaApiEncoder::new(interval)
+                            .map(|e| StreamEncoderBackend::VaApi(Box::new(e)))
+                    }
+                }
+                Preference::Nvenc | Preference::Vulkan => {
+                    #[cfg(feature = "ffmpeg-encoding")]
+                    {
+                        let kind = if candidate == Preference::Nvenc {
+                            ffmpeg::Kind::Nvenc
+                        } else {
+                            ffmpeg::Kind::Vulkan
+                        };
+                        ffmpeg::FfmpegEncoder::new(kind, interval, options.device.as_deref())
+                            .map(|e| StreamEncoderBackend::Ffmpeg(Box::new(e), kind))
+                    }
+                    #[cfg(not(feature = "ffmpeg-encoding"))]
+                    {
+                        Err("this build does not include ffmpeg-encoding".into())
+                    }
+                }
+                _ => unreachable!("candidate list contains only hardware encoders"),
+            };
+            match result {
+                Ok(backend) => {
+                    logging::debug(
+                        "stream",
+                        format!("stream H264 encoder selected: backend={}", backend.name()),
+                    );
+                    return Ok(Self {
+                        backend,
+                        keyframe_interval_frames: interval,
+                    });
+                }
+                Err(error) => {
+                    let failure = format!("{candidate:?}: {error}");
+                    logging::debug(
+                        "stream",
+                        format!("H264 hardware candidate unavailable: {failure}"),
+                    );
+                    failures.push(failure);
+                }
+            }
+        }
+        let backend = OpenH264Encoder::new(interval)
+            .map(|e| StreamEncoderBackend::OpenH264(Box::new(e)))
+            .map_err(|error| {
+                format!(
+                    "H264 encoder creation failed: {}; OpenH264: {error}",
+                    failures.join("; ")
+                )
+            })?;
+        logging::debug("stream", "stream H264 encoder selected: backend=openh264");
+        Ok(Self {
+            backend,
+            keyframe_interval_frames: interval,
+        })
+    }
+
+    pub(super) fn reconfigure_interval(&mut self, interval: u32) -> Result<(), String> {
+        // Keep software selected after startup or runtime fallback for this share.
+        // Never retry a failed GPU merely because the receiver changes its interval.
+        self.backend = match &mut self.backend {
+            StreamEncoderBackend::OpenH264(_) => {
+                StreamEncoderBackend::OpenH264(Box::new(OpenH264Encoder::new(interval)?))
+            }
+            #[cfg(target_os = "linux")]
+            StreamEncoderBackend::VaApi(_) => match vaapi::VaApiEncoder::new(interval) {
+                Ok(e) => StreamEncoderBackend::VaApi(Box::new(e)),
+                Err(error) => {
+                    logging::debug(
+                        "stream",
+                        format!("VA API reconfiguration failed; using software: {error}"),
+                    );
+                    StreamEncoderBackend::OpenH264(Box::new(OpenH264Encoder::new(interval)?))
+                }
+            },
+            #[cfg(all(target_os = "linux", feature = "ffmpeg-encoding"))]
+            StreamEncoderBackend::Ffmpeg(encoder, _) => {
+                // Changing GOP is implemented by the existing context's cadence;
+                // force IDR now and use the new interval on subsequent frames.
+                encoder.set_interval(interval)?;
+                self.keyframe_interval_frames = interval;
+                return Ok(());
+            }
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            _ => Self::new_auto(interval)?.backend,
+        };
+        self.keyframe_interval_frames = interval;
+        Ok(())
     }
 
     pub(super) fn encode(
@@ -192,6 +297,8 @@ impl StreamEncoderBackend {
     fn name(&self) -> &'static str {
         match self {
             Self::OpenH264(_) => "openh264",
+            #[cfg(all(target_os = "linux", feature = "ffmpeg-encoding"))]
+            Self::Ffmpeg(_, kind) => kind.name(),
             #[cfg(target_os = "linux")]
             Self::VaApi(_) => "vaapi",
             #[cfg(target_os = "macos")]
@@ -204,6 +311,8 @@ impl StreamEncoderBackend {
     fn hardware_name(&self) -> Option<&'static str> {
         match self {
             Self::OpenH264(_) => None,
+            #[cfg(all(target_os = "linux", feature = "ffmpeg-encoding"))]
+            Self::Ffmpeg(_, kind) => Some(kind.name()),
             #[cfg(target_os = "linux")]
             Self::VaApi(_) => Some("VA API"),
             #[cfg(target_os = "macos")]
@@ -220,6 +329,8 @@ impl StreamEncoderBackend {
     ) -> Result<Option<EncodedH264Frame>, String> {
         match self {
             Self::OpenH264(encoder) => encoder.encode(frame, force_keyframe),
+            #[cfg(all(target_os = "linux", feature = "ffmpeg-encoding"))]
+            Self::Ffmpeg(encoder, _) => encoder.encode(frame, force_keyframe),
             #[cfg(target_os = "linux")]
             Self::VaApi(encoder) => encoder.encode(frame, force_keyframe),
             #[cfg(target_os = "macos")]
@@ -360,11 +471,13 @@ fn openh264_encoder_config_with_interval(keyframe_interval_frames: u32) -> Encod
         .vui(VuiConfig::bt709())
 }
 
+#[cfg(any(test, target_os = "macos", target_os = "windows"))]
 struct EncoderSelection<T> {
     encoder: T,
     hardware_failure: Option<String>,
 }
 
+#[cfg(any(test, target_os = "macos", target_os = "windows"))]
 fn select_with_software_fallback<T>(
     hardware_name: &str,
     hardware: Result<T, String>,
@@ -1289,3 +1402,21 @@ mod tests {
         assert!(normalize_h264_access_unit(&[0, 0, 0, 9, 0x65]).is_err());
     }
 }
+
+#[cfg(target_os = "linux")]
+fn linux_candidates(
+    preference: crate::config::ScreenCaptureEncoderPreference,
+) -> &'static [crate::config::ScreenCaptureEncoderPreference] {
+    use crate::config::ScreenCaptureEncoderPreference::*;
+    match preference {
+        Auto => &[Nvenc, Vaapi, Vulkan],
+        Nvenc => &[Nvenc],
+        Vulkan => &[Vulkan],
+        Vaapi => &[Vaapi],
+        Software => &[],
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "encoder/selection_tests.rs"]
+mod selection_tests;

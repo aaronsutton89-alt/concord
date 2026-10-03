@@ -213,6 +213,8 @@ YouTube playback depends on your local `mpv` setup, such as `yt-dlp` support.
 To broadcast, join a voice channel, open its channel actions, choose
 `Share screen` or use `<leader>vs` voice shortcut.
 Linux screen capture depends on the active X11 or Wayland support.
+Optional Linux FFmpeg hardware encoders and their configuration are described
+in the [hardware encoding guide](./docs/hardware-encoding.md).
 
 ### Rich Presence
 

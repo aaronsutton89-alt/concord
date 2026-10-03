@@ -870,6 +870,13 @@ fn run_capture_loop(
     );
     let mut active_keyframe_interval_frames =
         control.keyframe_interval_frames.load(Ordering::Acquire);
+    #[cfg(target_os = "linux")]
+    let options = crate::config::load_options()
+        .map_err(|error| format!("load screen capture options: {error}"))?
+        .screen_capture;
+    #[cfg(target_os = "linux")]
+    let mut encoder = StreamEncoder::new_linux(active_keyframe_interval_frames, &options)?;
+    #[cfg(not(target_os = "linux"))]
     let mut encoder = StreamEncoder::new_auto(active_keyframe_interval_frames)?;
     if ready_tx.send(Ok(())).is_err() {
         logging::debug(
@@ -932,7 +939,7 @@ fn run_capture_loop(
         let interval_changed =
             requested_keyframe_interval_frames != active_keyframe_interval_frames;
         if interval_changed {
-            encoder = StreamEncoder::new_auto(requested_keyframe_interval_frames)?;
+            encoder.reconfigure_interval(requested_keyframe_interval_frames)?;
             logging::debug(
                 "stream",
                 format!(

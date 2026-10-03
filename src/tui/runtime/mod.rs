@@ -109,6 +109,7 @@ pub(super) async fn run_dashboard(
     state.apply_reaction_options(options.reactions);
     state.apply_translation_options(options.translation);
     state.apply_klipy_options(options.klipy.clone());
+    state.apply_screen_capture_options(options.screen_capture);
     drop(snapshots.borrow_and_update());
     let initial_snapshot = client.current_discord_snapshot();
     let mut current_snapshot_revision = initial_snapshot.revision.global;

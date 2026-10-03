@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use crate::config::{
     AnimatePreviews, AppOptions, ComposerOptions, CredentialOptions, DisplayOptions,
     ImagePreviewQualityPreset, KeymapOptions, NotificationOptions, PresenceOptions,
-    ReactionOptions, TranslationOptions, UiStateOptions, VoiceOptions,
+    ReactionOptions, ScreenCaptureOptions, TranslationOptions, UiStateOptions, VoiceOptions,
     VoiceParticipantPlaybackOption,
 };
 use crate::discord::ids::{Id, marker::UserMarker};
@@ -72,6 +72,8 @@ pub(super) struct SettingsState {
     pub(super) presence_options: PresenceOptions,
     // Not editable in the TUI: favorite reaction emojis live in config.toml.
     pub(super) reaction_options: ReactionOptions,
+    // Not editable in the TUI: preserve screen capture configuration on saves.
+    pub(super) screen_capture_options: ScreenCaptureOptions,
     pub(super) key_bindings: KeyBindings,
     pub(super) voice_participant_playback:
         BTreeMap<Id<UserMarker>, VoiceParticipantPlaybackSettings>,
@@ -112,6 +114,13 @@ impl DashboardState {
 
     pub(in crate::tui) fn apply_reaction_options(&mut self, reaction_options: ReactionOptions) {
         self.options.reaction_options = reaction_options;
+    }
+
+    pub(in crate::tui) fn apply_screen_capture_options(
+        &mut self,
+        screen_capture_options: ScreenCaptureOptions,
+    ) {
+        self.options.screen_capture_options = screen_capture_options;
     }
 
     pub(in crate::tui) fn apply_translation_options(
@@ -380,6 +389,7 @@ impl DashboardState {
             presence: self.options.presence_options,
             translation: self.translations.options().clone(),
             klipy: self.klipy.options.clone(),
+            screen_capture: self.options.screen_capture_options.clone(),
         })
     }
 

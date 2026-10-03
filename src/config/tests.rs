@@ -6,9 +6,9 @@ use super::{
     AnimatePreviews, AppOptions, BorderShape, BorderSurface, ComposerOptions, CredentialOptions,
     CredentialStoreMode, DisplayOptions, HighlightGroup, ImagePreviewQualityPreset,
     ImageProtocolPreference, KeymapBinding, KeymapOptions, NotificationOptions, PresenceOptions,
-    ThemeOptions, TranslationOptions, TranslationProviderKind, VoiceOptions,
-    load_keymap_options_from_path, load_options_from_path, parse_app_options, parse_theme_options,
-    save_options_to_path,
+    ScreenCaptureEncoderPreference, ThemeOptions, TranslationOptions, TranslationProviderKind,
+    VoiceOptions, load_keymap_options_from_path, load_options_from_path, parse_app_options,
+    parse_theme_options, save_options_to_path,
 };
 use crate::discord::{
     MicrophoneBufferMs, MicrophoneSensitivityDb, VoiceParticipantVolumePercent, VoiceVolumePercent,
@@ -29,6 +29,60 @@ fn display_options_default_to_all_media_enabled() {
     );
     assert_eq!(options.image_protocol, ImageProtocolPreference::Auto);
     assert_eq!(options.animate_previews, AnimatePreviews::Always);
+}
+
+#[test]
+fn screen_capture_encoder_preferences_parse_supported_values() {
+    let cases = [
+        ("auto", ScreenCaptureEncoderPreference::Auto),
+        ("nvenc", ScreenCaptureEncoderPreference::Nvenc),
+        ("vulkan", ScreenCaptureEncoderPreference::Vulkan),
+        ("vaapi", ScreenCaptureEncoderPreference::Vaapi),
+        ("software", ScreenCaptureEncoderPreference::Software),
+    ];
+    for (value, expected) in cases {
+        let config: AppOptions =
+            toml::from_str(&format!("[screen_capture]\nencoder = \"{value}\"\n"))
+                .expect("screen capture config should parse");
+        assert_eq!(config.screen_capture.encoder, expected);
+    }
+}
+
+#[test]
+fn screen_capture_encoder_defaults_and_device_is_optional() {
+    let defaults: AppOptions =
+        toml::from_str("[screen_capture]\n").expect("empty screen capture config should parse");
+    assert_eq!(
+        defaults.screen_capture.encoder,
+        ScreenCaptureEncoderPreference::Auto
+    );
+    assert_eq!(defaults.screen_capture.device, None);
+
+    let configured: AppOptions =
+        toml::from_str("[screen_capture]\nencoder = \"vaapi\"\ndevice = \"/dev/dri/renderD128\"\n")
+            .expect("configured screen capture config should parse");
+    assert_eq!(
+        configured.screen_capture.device.as_deref(),
+        Some("/dev/dri/renderD128")
+    );
+}
+
+#[test]
+fn invalid_screen_capture_preference_warns_and_preserves_valid_siblings() {
+    let (options, warnings) = parse_app_options(
+        "[screen_capture]\nencoder = \"unsupported\"\ndevice = \"/dev/dri/renderD128\"\n",
+    )
+    .expect("syntactically valid config should parse");
+    assert_eq!(
+        options.screen_capture.encoder,
+        ScreenCaptureEncoderPreference::Auto
+    );
+    assert_eq!(
+        options.screen_capture.device.as_deref(),
+        Some("/dev/dri/renderD128")
+    );
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].contains("encoder"));
 }
 
 #[test]
@@ -688,6 +742,10 @@ fn options_save_and_load_round_trip() {
             endpoint: Some("http://127.0.0.1:5000/translate".to_owned()),
             api_key: Some("config-secret".to_owned()),
             api_key_env: None,
+        },
+        screen_capture: super::ScreenCaptureOptions {
+            encoder: ScreenCaptureEncoderPreference::Vaapi,
+            device: Some("/dev/dri/renderD128".to_owned()),
         },
     };
 
