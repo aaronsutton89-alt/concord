@@ -18,6 +18,8 @@ Created: 2026-10-03. Status: implementation in progress on `feat/linux-hardware-
 - All-features Clippy passed. Full all-features suite outside the sandbox passed: 1,861 library tests and one binary test, three hardware tests ignored. The first sandbox run had 13 failures from blocked localhost sockets; these passed with appropriate access.
 - No-default-features Clippy passed. Default-build selection tests passed (three), including unavailable NVENC fallback.
 - Release build passed and `target/release/concord --version` reported 2.6.1. Rust 1.90/musl all-features compilation passed in the CI Alpine 3.22 container against FFmpeg 6.1.2. Native macOS/Windows validation and live Discord receiver checks are still pending. No desktop capture or messages to other people have been performed.
+- Live sender validation: user started a whole-desktop share with the release binary. Logs confirmed `backend=nvenc`, about 30 FPS captured/queued/sent, 6 Mbps encoded / 6.3 Mbps on the wire, around 1.2 ms mean encode time, audio packets and receiver feedback. Recent intervals had zero encoder skips/queue drops; requested retransmissions succeeded. Viewer picture/audio-sync confirmation and a software comparison remain pending.
+- First remote CI found an existing `AtomicU32::fetch_update` deprecation on newer stable Rust. Added a narrowly scoped compatibility allowance to `take_nonce`, retaining the Rust 1.90 API and unchanged encryption nonce behavior. Remote checks are being rerun.
 - User guide: [hardware-encoding.md](hardware-encoding.md).
 
 ## Objective and scope

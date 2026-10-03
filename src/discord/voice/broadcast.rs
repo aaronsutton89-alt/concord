@@ -1321,6 +1321,8 @@ impl BroadcastPacketEncryptor {
             .encrypt_rtcp_feedback(packet, self.take_nonce(packet_kind)?)
     }
 
+    // Keep the Rust 1.90 API until the MSRV includes AtomicU32::try_update.
+    #[allow(deprecated, reason = "fetch_update supports the Rust 1.90 MSRV")]
     fn take_nonce(&self, packet_kind: &str) -> Result<[u8; 4], String> {
         self.nonce_suffix
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |nonce| {
