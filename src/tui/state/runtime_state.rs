@@ -90,6 +90,7 @@ pub(super) struct RuntimeUiState {
     pub(super) active_stream_playbacks: BTreeSet<StreamPlaybackUiTarget>,
     pub(super) stream_broadcast_preparing: Option<StreamBroadcastUiTarget>,
     pub(super) active_stream_broadcast: Option<StreamBroadcastUiTarget>,
+    pub(super) stream_broadcast_encoder: Option<&'static str>,
     pub(super) stream_capture_targets_request: Option<StreamCaptureTargetsRequest>,
     pub(super) gateway_error: Option<String>,
     pub(super) voice_connection: Option<VoiceConnectionUiState>,

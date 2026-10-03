@@ -170,6 +170,7 @@ impl DashboardState {
 
         self.runtime.media_playback_preparing = None;
         self.runtime.active_stream_broadcast = None;
+        self.runtime.stream_broadcast_encoder = None;
         self.runtime.stream_broadcast_preparing = Some(target);
         self.runtime.toast_message = Some(ToastMessage {
             text: STREAM_BROADCAST_PREPARING_TEXT.to_owned(),
@@ -242,6 +243,7 @@ impl DashboardState {
 
         if active_matches {
             self.runtime.active_stream_broadcast = None;
+            self.runtime.stream_broadcast_encoder = None;
         }
         let was_preparing = preparing_matches;
         if preparing_matches {

@@ -104,6 +104,25 @@ pub struct VoiceOptions {
     pub voice_output_volume: VoiceVolumePercent,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct ScreenCaptureOptions {
+    pub encoder: ScreenCaptureEncoderPreference,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScreenCaptureEncoderPreference {
+    #[default]
+    Auto,
+    Nvenc,
+    Vulkan,
+    Vaapi,
+    Software,
+}
+
 impl Default for VoiceOptions {
     fn default() -> Self {
         Self {
@@ -296,6 +315,7 @@ pub struct AppOptions {
     pub presence: PresenceOptions,
     pub translation: TranslationOptions,
     pub klipy: KlipyOptions,
+    pub screen_capture: ScreenCaptureOptions,
 }
 
 /// Optional KLIPY integration. Keys are never included in diagnostic output.

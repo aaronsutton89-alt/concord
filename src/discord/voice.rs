@@ -382,6 +382,11 @@ pub(crate) enum VoiceRuntimeEvent {
         connection_id: u64,
         stream_key: String,
     },
+    BroadcastStreamEncoderChanged {
+        connection_id: u64,
+        stream_key: String,
+        encoder: &'static str,
+    },
     BroadcastStreamConnectionStable {
         connection_id: u64,
         stream_key: String,
@@ -555,6 +560,21 @@ impl VoiceStatusPublisher {
     ) {
         self.events
             .publish(AppEvent::StreamBroadcastStarted { scope, channel_id })
+            .await;
+    }
+
+    async fn publish_stream_broadcast_encoder_changed(
+        &self,
+        scope: VoiceScope,
+        channel_id: Id<ChannelMarker>,
+        encoder: &'static str,
+    ) {
+        self.events
+            .publish(AppEvent::StreamBroadcastEncoderChanged {
+                scope,
+                channel_id,
+                encoder,
+            })
             .await;
     }
 

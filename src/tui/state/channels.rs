@@ -1294,7 +1294,20 @@ impl DashboardState {
                 .unwrap_or_else(|| format!("guild-{}", guild_id.get())),
             None => "Direct Messages".to_owned(),
         };
-        Some(format!("{prefix} - {channel}{suffix}"))
+        let encoder = if broadcasting {
+            match self.runtime.stream_broadcast_encoder {
+                Some("nvenc") => " [NVENC]",
+                Some("vulkan") => " [Vulkan]",
+                Some("vaapi") => " [VA-API]",
+                Some("videotoolbox") => " [VideoToolbox]",
+                Some("media-foundation") => " [Media Foundation]",
+                Some("openh264") => " [Software]",
+                _ => "",
+            }
+        } else {
+            ""
+        };
+        Some(format!("{prefix} - {channel}{suffix}{encoder}"))
     }
 
     pub fn current_voice_self_status(&self) -> (bool, bool) {
