@@ -1,6 +1,6 @@
 # Concord Linux NVENC and Vulkan Video encoding plan
 
-Created: 2026-10-03. Status: NVENC implemented and live-verified on `feat/linux-hardware-encoding`; Vulkan remains experimental because constrained-baseline initialization fails on the tested FFmpeg/driver combination. Broader validation items below remain open.
+Created: 2026-10-03. Status: NVENC implemented and live-verified on `feat/linux-hardware-encoding`; Vulkan's constrained-baseline profile mapping issue is fixed in an isolated FFmpeg 9.0.2 runtime and the Rust round-trip passes. Vulkan remains experimental pending a live screen share of the game Deadlock. Broader validation items below remain open.
 
 
 ## Implementation record (2026-10-03)
@@ -14,7 +14,8 @@ Created: 2026-10-03. Status: NVENC implemented and live-verified on `feat/linux-
 - Main-model work: dependency selection, GPU adapter/unsafe code, selection integration, upstream integration, final review. GPT-6 Luna tasks: config and preservation tests, selection tests, user documentation.
 - Synthetic CLI NVENC probe: 60 frames at 1280×720, 30 FPS, 6 Mbps; independent FFmpeg decode passed and ffprobe reported Constrained Baseline level 31.
 - Actual Rust NVENC adapter test: 90 changing synthetic frames, initial/forced/periodic IDRs and interval change; independent decode, frame count, luma and chroma checks passed. First debug run took 867 ms including test image generation, which is not a live-stream benchmark.
-- Vulkan diagnostics: Constrained Baseline and Main fail during parameter feedback (`Unable to get feedback for H.264 units = 0`) on RTX 5090 / 615.71.09 / FFmpeg 9.0.2. High profile works in a CLI diagnostic, so Vulkan encode support exists but the required profile path fails. Keep the compatibility requirement; never silently substitute High. Actual Rust Vulkan test correctly fails without accepting software fallback. Vulkan remains experimental/unverified for compatible-profile encoding.
+- Vulkan diagnosis and fix: FFmpeg 9.0.2 `libavcodec/vulkan_video.c`, `ff_vk_h264_profile_to_vk`, recognizes constrained-baseline value 578 but not baseline value 66 stored in the SPS. Adding the missing `AV_PROFILE_H264_BASELINE` case maps it to Vulkan’s Baseline profile and fixes the invalid enum. See [FFmpeg 9.0.2 `vulkan_video.c`](https://github.com/FFmpeg/FFmpeg/blob/n9.0.2/libavcodec/vulkan_video.c). The minimal one-line mapping patch alone passed the Rust `vulkan_round_trip` test: 90 frames with forced and periodic IDRs and interval changes were independently decoded; elapsed time was 781 ms. The earlier suspected High-only flags change was removed and is not required.
+- Vulkan runtime and remaining validation: the prepared launch and build scripts are `scripts/build-vulkan-runtime.sh` and `scripts/concord-vulkan-debug.sh`. The isolated runtime uses patched `libavcodec.so.63` plus system `libavutil`, without replacing system libraries; it includes only `h264_vulkan`, so it does not validate normal automatic selection or NVENC. Configure the next user share with explicit `encoder = "vulkan"`. A live share of the game Deadlock remain pending; Vulkan stays experimental until those checks pass.
 - All-features Clippy passed. Full all-features suite outside the sandbox passed: 1,861 library tests and one binary test, three hardware tests ignored. The first sandbox run had 13 failures from blocked localhost sockets; these passed with appropriate access.
 - No-default-features Clippy passed. Default-build selection tests passed (three), including unavailable NVENC fallback.
 - Release build passed and `target/release/concord --version` reported 2.6.1. Rust 1.90/musl all-features compilation passed in the CI Alpine 3.22 container against FFmpeg 6.1.2. Remote Linux, musl, macOS and Windows checks all passed ([CI run 37096806911](https://github.com/aaronsutton89-alt/concord/actions/runs/37096806911), code commit `0b78a9a`). The live receiver check passed by user confirmation. The user operated the desktop share; agent verification used numeric diagnostics and the user’s receiver report.
@@ -128,6 +129,8 @@ Vulkan rendering support alone is insufficient. Require the relevant video queue
 - [ ] Read completed bitstreams only after GPU completion; validate size/offsets and normalize output.
 - [ ] Test unsupported-device and device-loss behavior. Use Vulkan validation layers during development and fix lifetime/synchronization findings.
 - [ ] Pass synthetic decode and actual Discord receiver tests on a verified Vulkan Video device. Record which vendor/driver was tested; do not claim untested vendors are verified.
+
+Current finding: the FFmpeg profile mapping issue is corrected by the isolated one-line compatibility patch, and the Rust round-trip passes. Next, use the isolated runtime/debug scripts to run an explicitly selected Vulkan live share of the game Deadlock. Keep experimental/opt-in status until live behavior and reliable fallback satisfy the same contract as NVENC.
 
 Exit: Vulkan Video independently passes the same contract as NVENC, with reliable fallback. Keep experimental/opt-in status until that gate passes.
 

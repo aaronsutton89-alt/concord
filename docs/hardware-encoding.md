@@ -67,15 +67,21 @@ all 19 requested retransmissions were served. The user confirmed that the
 viewer picture and audio looked correct. These observations apply to this host;
 a controlled CPU comparison against software encoding remains pending.
 
-Vulkan support is experimental and opt-in. On the tested RTX 5090 / driver
-615.71.09 / FFmpeg 9.0.2 setup, the required constrained-baseline H.264 profile
-at level 3.1 fails to initialize in FFmpeg's Vulkan path. A diagnostic probe
-with FFmpeg's default High profile succeeded, but that profile does not meet
-Concord's required constrained-baseline contract; Main also failed. The Rust
-Vulkan round-trip test reproduced the constrained-baseline failure. Vulkan
-hardware encoding and live sharing therefore remain unverified. This is a
-profile-specific incompatibility in the tested FFmpeg/driver path, not evidence
-that the GPU lacks Vulkan Video H.264 support altogether.
+Vulkan support is experimental and opt-in. On FFmpeg 9.0.2, the H.264 Vulkan
+profile mapping recognized `AV_PROFILE_H264_CONSTRAINED_BASELINE` but omitted
+`AV_PROFILE_H264_BASELINE`, the profile value stored in the constrained-baseline
+SPS. Adding the missing baseline mapping in `libavcodec/vulkan_video.c` allowed
+the Rust Vulkan round-trip test to encode and independently decode 90 changing
+frames, including forced and periodic IDRs and an interval change; the run took
+781 ms. The corresponding FFmpeg 9.0.2 source is
+[`vulkan_video.c`](https://github.com/FFmpeg/FFmpeg/blob/n9.0.2/libavcodec/vulkan_video.c).
+
+The isolated runtime diagnostic uses the patched `libavcodec.so.63` with the
+system `libavutil`, without installing or replacing system libraries. Its
+minimal FFmpeg runtime supports only `h264_vulkan`; this does not validate the
+normal automatic or NVENC runtime. A live screen share of the game Deadlock is still pending. Keep Vulkan experimental until that check passes.
+For a user test, explicitly select `encoder = "vulkan"` under `[screen_capture]`
+and restart the share; do not use automatic selection to validate Vulkan.
 
 FFmpeg's native library diagnostics are quiet to avoid cluttering the terminal.
 Concord logs returned operation and error strings at debug level; use
@@ -93,3 +99,31 @@ These tests are named `discord::voice::capture::encoder::ffmpeg::tests::nvenc_ro
 and `discord::voice::capture::encoder::ffmpeg::tests::vulkan_round_trip`. A test
 must actually initialize the requested backend; a software fallback is not
 evidence that the corresponding hardware test passed.
+
+## Experimental FFmpeg 9.0.2 Baseline workaround
+
+On a host with system FFmpeg 9 (`libavutil.so.61`), the following builds the
+isolated Vulkan codec library from pinned sources and launches the existing
+feature-enabled Concord binary:
+
+```sh
+scripts/build-vulkan-runtime.sh
+cargo build --locked --release --features ffmpeg-encoding
+# Set [screen_capture] encoder = "vulkan" in your Concord config first.
+scripts/concord-vulkan-debug.sh
+```
+
+The build script requires a C compiler, make, pkg-config, nasm, curl, tar and
+patch. It downloads FFmpeg 9.0.2 and Vulkan headers into `target/`, checks their
+SHA-256 hashes, and applies `patches/ffmpeg-9.0.2-vulkan-baseline.patch`.
+It does not run sudo or install anything system-wide. The launcher sets
+`CONCORD_DEBUG=1` and a process-local `LD_LIBRARY_PATH` to find the patched
+codec library. Its child processes inherit that library path as well; do not
+use this minimal runtime for unrelated FFmpeg operations.
+
+For the live check, close the previous Concord instance and launch this script,
+share Deadlock, and verify `backend=vulkan` in the debug log. Confirm moving
+picture and synchronized audio at the viewer, then stop and restart the share.
+A fallback to software must not count as Vulkan success. To return to the
+normal NVENC setup, restore `encoder = "auto"` and launch Concord normally.
+The system FFmpeg installation remains unchanged.
