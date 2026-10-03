@@ -57,15 +57,15 @@ instead of repeatedly retrying hardware. A new share starts selection again.
 
 ## Current verification and limits
 
-On the tested RTX 5090 setup, the Rust NVENC path encoded 90 synthetic frames.
-The sequence included forced and periodic IDR frames and was independently
-decoded. This verifies a synthetic encode/decode path, not compatibility with
-Discord's live receiver or sustained real-world stream performance. Live
-receiver and comparative performance testing remain pending. A user-started whole-desktop
-share also confirmed the live sender selecting NVENC, about 30 FPS transmitted,
-6.3 Mbps wire bitrate, and roughly 1.2 ms mean encode time, with audio packets
-and receiver feedback flowing. This does not establish perceived picture quality
-or audio synchronization at the receiver.
+On the tested RTX 5090 setup, the Rust NVENC path encoded 90 synthetic frames,
+including forced and periodic IDRs and an interval change. Independent decoding
+verified the frame count and changing image planes. A user-started whole-desktop
+share then transmitted for over 11 minutes at about 30 FPS and 6.3 Mbps wire
+bitrate, with 1.2–1.8 ms interval-average encoding time. After transmission
+started, the inspected capture intervals had no queue drops or encoder skips;
+all 19 requested retransmissions were served. The user confirmed that the
+viewer picture and audio looked correct. These observations apply to this host;
+a controlled CPU comparison against software encoding remains pending.
 
 Vulkan support is experimental and opt-in. On the tested RTX 5090 / driver
 615.71.09 / FFmpeg 9.0.2 setup, the required constrained-baseline H.264 profile

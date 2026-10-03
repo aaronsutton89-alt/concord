@@ -1,6 +1,6 @@
 # Concord Linux NVENC and Vulkan Video encoding plan
 
-Created: 2026-10-03. Status: implementation in progress on `feat/linux-hardware-encoding`; NVENC synthetic hardware validation passed, Vulkan constrained-baseline initialization is blocked on the tested FFmpeg/driver combination.
+Created: 2026-10-03. Status: NVENC implemented and live-verified on `feat/linux-hardware-encoding`; Vulkan remains experimental because constrained-baseline initialization fails on the tested FFmpeg/driver combination. Broader validation items below remain open.
 
 
 ## Implementation record (2026-10-03)
@@ -17,9 +17,9 @@ Created: 2026-10-03. Status: implementation in progress on `feat/linux-hardware-
 - Vulkan diagnostics: Constrained Baseline and Main fail during parameter feedback (`Unable to get feedback for H.264 units = 0`) on RTX 5090 / 615.71.09 / FFmpeg 9.0.2. High profile works in a CLI diagnostic, so Vulkan encode support exists but the required profile path fails. Keep the compatibility requirement; never silently substitute High. Actual Rust Vulkan test correctly fails without accepting software fallback. Vulkan remains experimental/unverified for compatible-profile encoding.
 - All-features Clippy passed. Full all-features suite outside the sandbox passed: 1,861 library tests and one binary test, three hardware tests ignored. The first sandbox run had 13 failures from blocked localhost sockets; these passed with appropriate access.
 - No-default-features Clippy passed. Default-build selection tests passed (three), including unavailable NVENC fallback.
-- Release build passed and `target/release/concord --version` reported 2.6.1. Rust 1.90/musl all-features compilation passed in the CI Alpine 3.22 container against FFmpeg 6.1.2. Native macOS/Windows validation and live Discord receiver checks are still pending. No desktop capture or messages to other people have been performed.
-- Live sender validation: user started a whole-desktop share with the release binary. Logs confirmed `backend=nvenc`, about 30 FPS captured/queued/sent, 6 Mbps encoded / 6.3 Mbps on the wire, around 1.2 ms mean encode time, audio packets and receiver feedback. Recent intervals had zero encoder skips/queue drops; requested retransmissions succeeded. Viewer picture/audio-sync confirmation and a software comparison remain pending.
-- First remote CI found an existing `AtomicU32::fetch_update` deprecation on newer stable Rust. Added a narrowly scoped compatibility allowance to `take_nonce`, retaining the Rust 1.90 API and unchanged encryption nonce behavior. Remote checks are being rerun.
+- Release build passed and `target/release/concord --version` reported 2.6.1. Rust 1.90/musl all-features compilation passed in the CI Alpine 3.22 container against FFmpeg 6.1.2. Remote Linux, musl, macOS and Windows checks all passed ([CI run 37096806911](https://github.com/aaronsutton89-alt/concord/actions/runs/37096806911), code commit `0b78a9a`). The live receiver check passed by user confirmation. The user operated the desktop share; agent verification used numeric diagnostics and the user’s receiver report.
+- Live sender validation: user started a whole-desktop share with the release binary. Logs confirmed `backend=nvenc`, about 30 FPS captured/queued/sent, 6 Mbps encoded / 6.3 Mbps on the wire, around 1.2 ms mean encode time, audio packets and receiver feedback. Recent intervals had zero encoder skips/queue drops; requested retransmissions succeeded. The user confirmed that the viewer picture and audio look correct. A software comparison remains pending.
+- First remote CI found an existing `AtomicU32::fetch_update` deprecation on newer stable Rust. Added a narrowly scoped compatibility allowance to `take_nonce`, retaining the Rust 1.90 API and unchanged encryption nonce behavior. The subsequent remote checks all passed.
 - User guide: [hardware-encoding.md](hardware-encoding.md).
 
 ## Objective and scope
@@ -111,7 +111,7 @@ Proposed file: `src/discord/voice/capture/encoder/nvenc.rs`; register in `encode
 - [x] Upload stride-correct input, encode, collect complete output, derive keyframe status from the bitstream, and normalize Annex B.
 - [x] Implement forced IDR and SPS/PPS emission for stream startup, receiver recovery, and encoder reconstruction. Avoid emitting synthetic startup probe frames into the live stream.
 - [ ] Bound pending work and release buffers, bitstream locks, sessions, and context on failure and normal stop.
-- [ ] Pass synthetic decode tests and a real screen share on the RTX 5090. Confirm logs actually say NVENC and GPU encoder activity corroborates them.
+- [x] Pass synthetic decode tests and a real screen share on the RTX 5090. Confirm logs actually say NVENC and GPU encoder activity corroborates them.
 
 Exit: NVENC works end to end; missing NVIDIA libraries or simulated hardware errors produce a decodable software fallback.
 
